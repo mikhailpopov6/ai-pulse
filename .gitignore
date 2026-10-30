@@ -1,3 +1,4 @@
 build/
+dist/
 Resources/AppIcon.icns
 .DS_Store

@@ -1,8 +1,9 @@
 import AppKit
 import SwiftUI
 import WidgetKit
+import ServiceManagement
 
-// Фоновый агент: собирает метрики, кладёт снимок для виджета и показывает его в меню-баре.
+// Background agent: collects metrics, writes the snapshot for the widget and shows it in the menu bar.
 final class Store: ObservableObject {
     @Published var snapshot: Snapshot
 
@@ -10,8 +11,8 @@ final class Store: ObservableObject {
     private let codexFetcher = CodexFetcher()
     private let claudeFetcher = ClaudeFetcher()
     private var lastClaudeFetch = Date.distantPast
-    private var fastHistory: [Double] = []      // каждые 2 с, для поповера
-    private var slowHistory: [Double] = []      // средние за 20 с, для виджета
+    private var fastHistory: [Double] = []      // every 2 s, for the popover
+    private var slowHistory: [Double] = []      // 20 s averages, for the widget
     private var slowBucket: [Double] = []
     private var lastCPU: (usage: Double, user: Double, system: Double) = (0, 0, 0)
     private var lastWidgetReload = Date.distantPast
@@ -21,7 +22,7 @@ final class Store: ObservableObject {
     var onTick: (() -> Void)?
 
     init() {
-        let empty = LimitsBlock.unavailable("загрузка…")
+        let empty = LimitsBlock.unavailable(tr("loading…", "загрузка…"))
         snapshot = Snapshot(updatedAt: Date(),
                             cpu: CPUStats(usage: 0, user: 0, system: 0, cores: ProcessInfo.processInfo.activeProcessorCount, history: []),
                             memory: MemoryReader.read(), claude: empty, codex: empty)
@@ -46,7 +47,7 @@ final class Store: ObservableObject {
     }
 
     func refreshClaude(force: Bool = false) {
-        // Эндпоинт usage отвечает 429 на частые запросы — не чаще раза в полторы минуты.
+        // The usage endpoint answers 429 to frequent requests: at most once every ~1.5 minutes.
         if !force, Date().timeIntervalSince(lastClaudeFetch) < 85 { return }
         if force, Date().timeIntervalSince(lastClaudeFetch) < 20 { return }
         lastClaudeFetch = Date()
@@ -59,20 +60,20 @@ final class Store: ObservableObject {
         }
     }
 
-    // Открывает Терминал с командой входа в claude.ai для отдельного конфига AI Pulse.
+    // Opens Terminal with the claude.ai sign-in command for AI Pulse's separate config.
     func openClaudeLogin() {
         let script = SharedPaths.supportDir.appendingPathComponent("claude-login.command")
         let body = """
         #!/bin/zsh
-        echo "AI Pulse: вход в claude.ai (отдельный конфиг, основной Claude Code не затрагивается)"
+        echo "\(tr("AI Pulse: signing in to claude.ai (separate config, your main Claude Code is not affected)", "AI Pulse: вход в claude.ai (отдельный конфиг, основной Claude Code не затрагивается)"))"
         \(ClaudeFetcher.loginCommand)
-        echo; echo "Готово. Окно можно закрыть."
+        echo; echo "\(tr("Done. You can close this window.", "Готово. Окно можно закрыть."))"
         """
         try? FileManager.default.createDirectory(atPath: ClaudeFetcher.configDir, withIntermediateDirectories: true)
         try? body.write(to: script, atomically: true, encoding: .utf8)
         try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: script.path)
         NSWorkspace.shared.open(script)
-        // Подхватить вход, как только он появится.
+        // Pick up the sign-in as soon as it appears.
         for delay in [30.0, 60, 120, 240] {
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
                 guard let self, self.snapshot.claude.state != .ok else { return }
@@ -87,7 +88,7 @@ final class Store: ObservableObject {
         lastCodexFetch = Date()
         codexFetcher.fetch { [weak self] block in
             guard let self else { return }
-            // Ошибку разового запроса не показываем, пока есть свежие данные.
+            // Don't surface a one-off error while recent data is available.
             if block.state != .ok, self.snapshot.codex.state == .ok,
                let t = self.snapshot.codex.fetchedAt, Date().timeIntervalSince(t) < 1800 { return }
             self.snapshot.codex = block
@@ -133,6 +134,7 @@ final class Store: ObservableObject {
 struct PopoverView: View {
     @ObservedObject var store: Store
     @ObservedObject var desktop: DesktopWidgetController
+    @ObservedObject var login: LoginItem
     var onQuit: () -> Void
 
     var body: some View {
@@ -140,26 +142,30 @@ struct PopoverView: View {
             FullPanel(snap: store.snapshot, stale: false)
             Divider().overlay(Color.white.opacity(0.08))
             HStack(spacing: 8) {
-                Text("На столе").font(.system(size: 11)).foregroundStyle(Theme.dim)
+                Text(tr("Desktop", "На столе")).font(.system(size: 11)).foregroundStyle(Theme.dim)
                 Picker("", selection: deskSelection) {
-                    Text("Выкл").tag("off")
+                    Text(tr("Off", "Выкл")).tag("off")
                     ForEach(DesktopStyle.allCases) { Text($0.title).tag($0.rawValue) }
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
                 .controlSize(.small)
             }
+            Toggle(tr("Open at login", "Открывать при входе в систему"), isOn: loginSelection)
+                .toggleStyle(.checkbox)
+                .font(.system(size: 11))
+                .foregroundStyle(Theme.dim)
             HStack(spacing: 10) {
                 Button { store.refreshLimits(force: true) } label: {
-                    Label("Обновить", systemImage: "arrow.clockwise")
+                    Label(tr("Refresh", "Обновить"), systemImage: "arrow.clockwise")
                 }
                 if store.snapshot.claude.state != .ok {
                     Button { store.openClaudeLogin() } label: {
-                        Label("Войти в Claude", systemImage: "person.crop.circle.badge.checkmark")
+                        Label(tr("Sign in to Claude", "Войти в Claude"), systemImage: "person.crop.circle.badge.checkmark")
                     }
                 }
                 Spacer()
-                Button(action: onQuit) { Text("Выйти") }
+                Button(action: onQuit) { Text(tr("Quit", "Выйти")) }
             }
             .buttonStyle(.borderless)
             .font(.system(size: 11))
@@ -171,7 +177,11 @@ struct PopoverView: View {
         .environment(\.colorScheme, .dark)
     }
 
-    // «Выкл» или вид карточки на рабочем столе.
+    private var loginSelection: Binding<Bool> {
+        Binding(get: { login.enabled }, set: { login.set($0) })
+    }
+
+    // "Off" or the desktop card style.
     private var deskSelection: Binding<String> {
         Binding(
             get: { desktop.isShown ? desktop.style.rawValue : "off" },
@@ -181,14 +191,54 @@ struct PopoverView: View {
     }
 }
 
+// "Open at login" through the system Login Items (SMAppService), so no install script is
+// needed: drag the app from the DMG to Applications and launch it once.
+final class LoginItem: ObservableObject {
+    @Published private(set) var enabled = false
+
+    init() { refresh() }
+
+    func refresh() { enabled = SMAppService.mainApp.status == .enabled }
+
+    // Turned on by default on the first launch; afterwards the user's choice is kept.
+    func setUpOnFirstLaunch() {
+        let key = "loginItem.configured"
+        if !UserDefaults.standard.bool(forKey: key) {
+            set(true)
+            UserDefaults.standard.set(true, forKey: key)
+        }
+        removeLegacyLaunchAgent()
+        AppLog.write("login item: \(SMAppService.mainApp.status.rawValue) (0 notRegistered, 1 enabled, 2 requiresApproval, 3 notFound)")
+    }
+
+    func set(_ on: Bool) {
+        do {
+            if on { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
+        } catch {
+            AppLog.write("login item \(on ? "register" : "unregister") failed: \(error.localizedDescription)")
+        }
+        refresh()
+    }
+
+    // Older builds started the app with a LaunchAgent; Login Items replace it.
+    private func removeLegacyLaunchAgent() {
+        let plist = SharedPaths.realHome.appendingPathComponent("Library/LaunchAgents/local.aipulse.plist")
+        if FileManager.default.fileExists(atPath: plist.path) {
+            try? FileManager.default.removeItem(at: plist)
+            AppLog.write("removed legacy LaunchAgent")
+        }
+    }
+}
+
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let store = Store()
     private lazy var desktop = DesktopWidgetController(store: store)
+    private let login = LoginItem()
     private var statusItem: NSStatusItem!
     private let popover = NSPopover()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Второй экземпляр (ручной запуск поверх LaunchAgent) сразу выходит.
+        // A second instance (e.g. opened manually while already running) quits right away.
         let me = ProcessInfo.processInfo.processIdentifier
         if NSRunningApplication.runningApplications(withBundleIdentifier: Bundle.main.bundleIdentifier ?? "")
             .contains(where: { $0.processIdentifier != me }) {
@@ -207,12 +257,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         popover.behavior = .transient
         popover.animates = true
-        popover.contentViewController = NSHostingController(rootView: PopoverView(store: store, desktop: desktop, onQuit: { NSApp.terminate(nil) }))
+        popover.contentViewController = NSHostingController(rootView: PopoverView(store: store, desktop: desktop, login: login, onQuit: { NSApp.terminate(nil) }))
 
         store.onTick = { [weak self] in self?.updateTitle(); self?.desktop.tick() }
         store.start()
         updateTitle()
         desktop.restore()
+        login.setUpOnFirstLaunch()
     }
 
     private func updateTitle() {
@@ -234,6 +285,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             popover.contentViewController?.view.window?.makeKey()
         }
     }
+}
+
+// `AIPulse --uninstall` (used by uninstall.sh): remove the Login Item and exit.
+if CommandLine.arguments.contains("--uninstall") {
+    try? SMAppService.mainApp.unregister()
+    exit(0)
 }
 
 let app = NSApplication.shared

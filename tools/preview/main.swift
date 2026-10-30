@@ -1,4 +1,4 @@
-// Рендер раскладок виджета в PNG для проверки вёрстки.
+// Renders the widget layouts to PNG to check the design. AIPULSE_LANG=en|ru picks the language.
 import AppKit
 import SwiftUI
 

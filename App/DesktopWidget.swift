@@ -1,23 +1,22 @@
 import AppKit
 import SwiftUI
 
-// Карточка на рабочем столе: окно без рамки на уровне иконок рабочего стола.
-// Лежит под обычными окнами, видна на всех Spaces, перетаскивается мышью
-// и обновляется вместе с агентом каждые 2 с. Замена системному виджету,
-// пока WidgetKit не принимает ad-hoc подпись.
+// Desktop card: a borderless window at the desktop-icon level. It sits below regular windows,
+// shows on all Spaces, can be dragged and refreshes with the agent every 2 s. It stands in for
+// the system widget, which WidgetKit won't show while the app is ad-hoc signed.
 enum DesktopStyle: String, CaseIterable, Identifiable {
     case rings, small, large
     var id: String { rawValue }
 
     var title: String {
         switch self {
-        case .rings: return "Кольца"
-        case .small: return "Маленький"
-        case .large: return "Большой"
+        case .rings: return tr("Rings", "Кольца")
+        case .small: return tr("Small", "Маленький")
+        case .large: return tr("Large", "Большой")
         }
     }
 
-    // Панель — та же, что в меню-баре; маленькая — её уменьшенная копия.
+    // The panel is the same as in the menu bar; Small is a scaled-down copy.
     var panelScale: CGFloat { self == .small ? 0.8 : 1 }
 }
 
@@ -30,10 +29,10 @@ final class DesktopWidgetController: NSObject, ObservableObject, NSWindowDelegat
     private var host: DraggableHostingView<DesktopCard>?
     private let defaults = UserDefaults.standard
 
-    // Место карточки: монитор (постоянный UUID дисплея) и отступ её верхнего левого угла
-    // от верхнего левого угла этого монитора — своё для каждого набора экранов.
-    // Меняется ТОЛЬКО когда пользователь сам перетащил карточку (см. DraggableHostingView).
-    // Сдвиги от системы при смене экранов не сохраняются, а карточка возвращается на место.
+    // Card position: a display (stable display UUID) and the offset of the card's top-left corner
+    // from that display's top-left corner, kept separately for every set of connected displays.
+    // It changes ONLY when the user drags the card (see DraggableHostingView). Moves made by
+    // the system on display changes are never saved; the card is put back instead.
     private struct Placement: Codable {
         var screen: String
         var dx: Double
@@ -52,7 +51,7 @@ final class DesktopWidgetController: NSObject, ObservableObject, NSWindowDelegat
     }
 
     func restore() {
-        // По умолчанию карточка включена.
+        // The card is on by default.
         if defaults.object(forKey: "desktop.visible") as? Bool ?? true { show() }
     }
 
@@ -79,8 +78,8 @@ final class DesktopWidgetController: NSObject, ObservableObject, NSWindowDelegat
         DispatchQueue.main.async { self.tick() }
     }
 
-    // Каждые 2 с: подогнать размер под содержимое и вернуть карточку на её место,
-    // если система её сдвинула. Пока идёт перетаскивание — не мешаем.
+    // Every 2 s: fit the size to the content and put the card back in place if the system
+    // moved it. Never interferes while a drag is in progress.
     func tick() {
         guard let p = panel, let host, p.isVisible, !host.isDragging else { return }
         var size = host.fittingSize
@@ -88,7 +87,7 @@ final class DesktopWidgetController: NSObject, ObservableObject, NSWindowDelegat
         let (target, screen) = expectedFrame(size: size)
         if !Self.same(target, p.frame) {
             if p.frame.size == target.size {
-                DesktopLog.write("вернула на место: \(Self.fmt(p.frame)) → \(Self.fmt(target)) [\(screen.localizedName)]")
+                AppLog.write("put back: \(Self.fmt(p.frame)) → \(Self.fmt(target)) [\(screen.localizedName)]")
             }
             setFrame(target)
         }
@@ -105,7 +104,7 @@ final class DesktopWidgetController: NSObject, ObservableObject, NSWindowDelegat
         p.isOpaque = false
         p.backgroundColor = .clear
         p.hasShadow = true
-        p.isMovableByWindowBackground = false   // тащим сами, чтобы точно знать, что это пользователь
+        p.isMovableByWindowBackground = false   // we drag ourselves to know for sure it is the user
         p.hidesOnDeactivate = false
         p.isReleasedWhenClosed = false
         p.contentView = host
@@ -113,16 +112,15 @@ final class DesktopWidgetController: NSObject, ObservableObject, NSWindowDelegat
         panel = p
         let (target, screen) = expectedFrame(size: size)
         setFrame(target)
-        DesktopLog.write("запуск: \(Self.fmt(target)) [\(screen.localizedName)] экраны: \(Self.screensDescription())")
+        AppLog.write("launch: \(Self.fmt(target)) [\(screen.localizedName)] displays: \(Self.screensDescription())")
         p.delegate = self
         return p
     }
 
-    // MARK: - Позиция
+    // MARK: - Position
 
-    // Место запоминается отдельно для каждого набора подключённых экранов:
-    // «ноутбук + монитор» — одно, «только ноутбук» — другое. При смене набора
-    // карточка переезжает на место, запомненное для нового набора.
+    // The position is remembered per set of connected displays: "laptop + monitor" has one,
+    // "laptop only" another. When the set changes, the card moves to the position saved for it.
     private static var configKey: String {
         NSScreen.screens.map { id(of: $0) }.sorted().joined(separator: "+")
     }
@@ -140,9 +138,9 @@ final class DesktopWidgetController: NSObject, ObservableObject, NSWindowDelegat
         if let data = try? JSONEncoder().encode(all) { defaults.set(data, forKey: "desktop.placements") }
     }
 
-    // Где карточка должна стоять при текущем наборе экранов. Для нового набора,
-    // где её ещё не ставили, берём место из другого набора, если его экран подключён,
-    // иначе — правый верхний угол главного экрана.
+    // Where the card belongs for the current set of displays. For a set it has never been placed
+    // in, reuse a position from another set if its display is connected, otherwise the top-right
+    // corner of the main display.
     private func expectedFrame(size: CGSize) -> (CGRect, NSScreen) {
         let all = loadPlacements()
         let connected = Set(NSScreen.screens.map { Self.id(of: $0) })
@@ -166,7 +164,7 @@ final class DesktopWidgetController: NSObject, ObservableObject, NSWindowDelegat
     private func userMovedCard() {
         guard let p = panel else { return }
         let screen = screenContaining(p.frame)
-        // Не даём утащить карточку за край экрана.
+        // Keep the card from being dragged off-screen.
         let clamped = clamp(p.frame, to: screen)
         if !Self.same(clamped, p.frame) { setFrame(clamped) }
         let pl = Placement(screen: Self.id(of: screen),
@@ -175,10 +173,10 @@ final class DesktopWidgetController: NSObject, ObservableObject, NSWindowDelegat
         var all = loadPlacements()
         all[Self.configKey] = pl
         savePlacements(all)
-        DesktopLog.write("перетащили [\(Self.configName)]: \(screen.localizedName) отступ \(Int(pl.dx)),\(Int(pl.dy))")
+        AppLog.write("dragged [\(Self.configName)]: \(screen.localizedName) offset \(Int(pl.dx)),\(Int(pl.dy))")
     }
 
-    // Прежние версии хранили одно место на все случаи — отдаём его текущему набору экранов.
+    // Older builds kept a single position for everything: assign it to the current set of displays.
     private func migrateLegacyPosition() {
         guard defaults.data(forKey: "desktop.placements") == nil else { return }
         var pl: Placement?
@@ -233,25 +231,25 @@ final class DesktopWidgetController: NSObject, ObservableObject, NSWindowDelegat
     }
 
     @objc private func screensChanged() {
-        DesktopLog.write("экраны изменились [\(Self.configName)]: \(Self.screensDescription())")
-        // Сразу и с задержками: macOS переставляет окна не мгновенно. Дальше страхует tick.
+        AppLog.write("displays changed [\(Self.configName)]: \(Self.screensDescription())")
+        // Right away and with delays: macOS rearranges windows lazily. tick() covers the rest.
         for delay in [0.0, 0.5, 1.5, 3.0] {
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in self?.tick() }
         }
     }
 }
 
-// Краткий журнал перемещений карточки — для разбора, если она снова «уедет».
-enum DesktopLog {
+// Small event log (card moves, login item) for troubleshooting.
+enum AppLog {
     static func write(_ line: String) {
-        let url = SharedPaths.supportDir.appendingPathComponent("desktop.log")
+        let url = SharedPaths.supportDir.appendingPathComponent("aipulse.log")
         let stamp = ISO8601DateFormatter.string(from: Date(), timeZone: .current, formatOptions: [.withFullDate, .withFullTime, .withSpaceBetweenDateAndTime])
         let data = Data("\(stamp) \(line)\n".utf8)
         if let h = try? FileHandle(forWritingTo: url) {
             h.seekToEndOfFile()
             h.write(data)
             try? h.close()
-            // Держим файл небольшим.
+            // Keep the file small.
             if let size = try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int, size > 200_000,
                let all = try? String(contentsOf: url, encoding: .utf8) {
                 try? String(all.suffix(100_000)).write(to: url, atomically: true, encoding: .utf8)
@@ -262,8 +260,8 @@ enum DesktopLog {
     }
 }
 
-// Перетаскивание делаем сами: так точно известно, что карточку двигает пользователь,
-// и место сохраняется в момент, когда кнопку мыши отпустили.
+// We handle dragging ourselves: that way we know for sure the user moved the card, and the
+// position is saved the moment the mouse button is released.
 final class DraggableHostingView<Content: View>: NSHostingView<Content> {
     var onDragEnded: (() -> Void)?
     private(set) var isDragging = false
@@ -294,7 +292,7 @@ final class DraggableHostingView<Content: View>: NSHostingView<Content> {
     }
 }
 
-// Уменьшает содержимое целиком, и в раскладке оно занимает уменьшенный размер.
+// Scales the content as a whole and makes it take the scaled size in the layout.
 struct ScaledLayout: Layout {
     var scale: CGFloat
 
@@ -334,8 +332,8 @@ struct DesktopCard: View {
                 }
             }
             Divider()
-            Button("Обновить лимиты") { store.refreshLimits(force: true) }
-            Button("Убрать с рабочего стола") { controller.hide() }
+            Button(tr("Refresh limits", "Обновить лимиты")) { store.refreshLimits(force: true) }
+            Button(tr("Remove from desktop", "Убрать с рабочего стола")) { controller.hide() }
         }
     }
 

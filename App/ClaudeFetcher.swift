@@ -1,24 +1,24 @@
 import Foundation
 import CryptoKit
 
-// Лимиты подписки claude.ai (5 часов / неделя) через тот же эндпоинт, что и /usage в Claude Code.
-// Вход хранится в отдельном конфиге Claude Code (CLAUDE_CONFIG_DIR), чтобы не трогать основной:
-// он может работать через API-ключ или корпоративный прокси. Токен живёт только в Keychain и в памяти процесса: не логируется
-// и не пишется в файлы.
+// claude.ai subscription limits (5 hours / week) from the same endpoint Claude Code's /usage uses.
+// The sign-in lives in a separate Claude Code config (CLAUDE_CONFIG_DIR) so the user's main
+// Claude Code is untouched: it may run on an API key or a corporate proxy. The token lives only
+// in the Keychain and in process memory: never logged, never written to files.
 final class ClaudeFetcher {
     static let configDir = SharedPaths.supportDir.appendingPathComponent("claude-login").path
     private static let tokenURL = URL(string: "https://platform.claude.com/v1/oauth/token")!
     private static let usageURL = URL(string: "https://api.anthropic.com/api/oauth/usage")!
     private static let clientID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
 
-    // Имя записи Keychain, как его строит Claude Code для нестандартного CLAUDE_CONFIG_DIR.
+    // Keychain item name, built the way Claude Code builds it for a custom CLAUDE_CONFIG_DIR.
     static var keychainService: String {
         let digest = SHA256.hash(data: Data(configDir.precomposedStringWithCanonicalMapping.utf8))
         let hex = digest.map { String(format: "%02x", $0) }.joined()
         return "Claude Code-credentials-\(hex.prefix(8))"
     }
 
-    // Команда входа: отдельный конфиг и без переменных API-ключа/прокси, иначе логин уйдёт не туда.
+    // Sign-in command: separate config and no API key/proxy variables, otherwise the login goes elsewhere.
     static var loginCommand: String {
         let claude = ["\(SharedPaths.realHome.path)/.local/bin/claude", "/opt/homebrew/bin/claude", "/usr/local/bin/claude"]
             .first { FileManager.default.isExecutableFile(atPath: $0) } ?? "claude"
@@ -28,10 +28,10 @@ final class ClaudeFetcher {
 
     private let queue = DispatchQueue(label: "aipulse.claude")
     private var running = false
-    // Свежий токен после обновления — на случай, если запись в Keychain не удалась.
+    // Fresh token after a refresh, in case writing it back to the Keychain failed.
     private var memoryOAuth: [String: Any]?
 
-    // После 429 молчим 5 минут: виджет держит последние данные.
+    // After a 429 stay quiet for 5 minutes; the UI keeps the last data meanwhile.
     private var backoffUntil = Date.distantPast
 
     func fetch(_ completion: @escaping (LimitsBlock) -> Void) {
@@ -49,7 +49,7 @@ final class ClaudeFetcher {
         guard var item = Keychain.read(service: Self.keychainService),
               var oauth = item.json["claudeAiOauth"] as? [String: Any],
               var access = oauth["accessToken"] as? String, !access.isEmpty else {
-            return .unavailable("войди в claude.ai: меню AI Pulse → «Войти в Claude»")
+            return .unavailable(tr("sign in to claude.ai: AI Pulse menu → “Sign in to Claude”", "войди в claude.ai: меню AI Pulse → «Войти в Claude»"))
         }
         func exp(_ o: [String: Any]) -> Double { (o["expiresAt"] as? NSNumber)?.doubleValue ?? 0 }
         if let mem = memoryOAuth, exp(mem) > exp(oauth), let a = mem["accessToken"] as? String {
@@ -80,15 +80,15 @@ final class ClaudeFetcher {
         let (data, status) = Self.send(req)
         switch status {
         case 200: break
-        case 401: return LimitsBlock(state: .error, message: "вход истёк — войди в Claude заново", plan: plan, windows: [], fetchedAt: Date())
+        case 401: return LimitsBlock(state: .error, message: tr("sign-in expired — sign in to Claude again", "вход истёк — войди в Claude заново"), plan: plan, windows: [], fetchedAt: Date())
         case 429:
             backoffUntil = Date().addingTimeInterval(300)
-            return LimitsBlock(state: .error, message: "claude.ai просит подождать (429)", plan: plan, windows: [], fetchedAt: Date())
-        case 0: return LimitsBlock(state: .error, message: "нет связи с api.anthropic.com", plan: plan, windows: [], fetchedAt: Date())
-        default: return LimitsBlock(state: .error, message: "ошибка claude.ai: HTTP \(status)", plan: plan, windows: [], fetchedAt: Date())
+            return LimitsBlock(state: .error, message: tr("claude.ai asks to slow down (429)", "claude.ai просит подождать (429)"), plan: plan, windows: [], fetchedAt: Date())
+        case 0: return LimitsBlock(state: .error, message: tr("cannot reach api.anthropic.com", "нет связи с api.anthropic.com"), plan: plan, windows: [], fetchedAt: Date())
+        default: return LimitsBlock(state: .error, message: tr("claude.ai error: HTTP \(status)", "ошибка claude.ai: HTTP \(status)"), plan: plan, windows: [], fetchedAt: Date())
         }
         guard let data, let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            return LimitsBlock(state: .error, message: "непонятный ответ claude.ai", plan: plan, windows: [], fetchedAt: Date())
+            return LimitsBlock(state: .error, message: tr("unexpected response from claude.ai", "непонятный ответ claude.ai"), plan: plan, windows: [], fetchedAt: Date())
         }
         return Self.parse(obj, plan: plan)
     }
@@ -101,18 +101,18 @@ final class ClaudeFetcher {
             guard let s = v as? String else { return nil }
             return iso.date(from: s) ?? isoPlain.date(from: s)
         }
-        let names: [(String, String)] = [("five_hour", "5 ч"), ("seven_day", "Неделя"),
-                                         ("seven_day_opus", "Неделя · Opus"), ("seven_day_sonnet", "Неделя · Sonnet")]
+        let names: [(String, String)] = [("five_hour", "5h"), ("seven_day", "week"),
+                                         ("seven_day_opus", "week_opus"), ("seven_day_sonnet", "week_sonnet")]
         var windows: [LimitWindow] = []
-        for (key, label) in names {
+        for (key, kind) in names {
             guard let w = obj[key] as? [String: Any],
                   let used = (w["utilization"] as? NSNumber)?.doubleValue else { continue }
-            // Помодельные окна показываем, только если ими реально пользуются.
+            // Per-model windows are shown only when they are actually in use.
             if key.hasPrefix("seven_day_"), used <= 0 { continue }
-            windows.append(LimitWindow(label: label, usedPercent: used, resetsAt: date(w["resets_at"])))
+            windows.append(LimitWindow(kind: kind, usedPercent: used, resetsAt: date(w["resets_at"])))
         }
         if windows.isEmpty {
-            return LimitsBlock(state: .unavailable, message: "claude.ai не вернул лимиты", plan: plan, windows: [], fetchedAt: Date())
+            return LimitsBlock(state: .unavailable, message: tr("claude.ai returned no limits", "claude.ai не вернул лимиты"), plan: plan, windows: [], fetchedAt: Date())
         }
         return LimitsBlock(state: .ok, message: nil, plan: plan, windows: windows, fetchedAt: Date())
     }
@@ -121,7 +121,7 @@ final class ClaudeFetcher {
 
     private func refresh(_ oauth: inout [String: Any]) -> RefreshResult {
         guard let rt = oauth["refreshToken"] as? String, !rt.isEmpty else {
-            return .failure("вход истёк — войди в Claude заново")
+            return .failure(tr("sign-in expired — sign in to Claude again", "вход истёк — войди в Claude заново"))
         }
         var body: [String: Any] = ["grant_type": "refresh_token", "refresh_token": rt, "client_id": Self.clientID]
         if let scopes = oauth["scopes"] as? [String], !scopes.isEmpty { body["scope"] = scopes.joined(separator: " ") }
@@ -133,7 +133,9 @@ final class ClaudeFetcher {
         guard status == 200, let data,
               let resp = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let access = resp["access_token"] as? String else {
-            return .failure(status == 400 || status == 401 ? "вход истёк — войди в Claude заново" : "не удалось обновить вход (HTTP \(status))")
+            return .failure(status == 400 || status == 401
+                ? tr("sign-in expired — sign in to Claude again", "вход истёк — войди в Claude заново")
+                : tr("could not refresh sign-in (HTTP \(status))", "не удалось обновить вход (HTTP \(status))"))
         }
         oauth["accessToken"] = access
         if let newRT = resp["refresh_token"] as? String { oauth["refreshToken"] = newRT }
@@ -156,8 +158,8 @@ final class ClaudeFetcher {
     }
 }
 
-// Работа с Keychain через /usr/bin/security — так же, как это делает сам Claude Code,
-// поэтому macOS не спрашивает доступ к записи. Значения не попадают ни в argv, ни в логи.
+// Keychain access through /usr/bin/security, exactly like Claude Code itself does it,
+// so macOS doesn't prompt for access to the item. Secrets never go to argv or logs.
 enum Keychain {
     struct Item {
         var account: String

@@ -14,7 +14,7 @@ enum Theme {
         colors: [Color(red: 0.09, green: 0.10, blue: 0.14), Color(red: 0.13, green: 0.14, blue: 0.20)],
         startPoint: .topLeading, endPoint: .bottomTrailing)
 
-    // Цвет метрики уходит в жёлтый/красный, когда подходит к пределу.
+    // A metric turns yellow/red as it approaches the limit.
     static func tint(_ base: Color, fraction: Double) -> Color {
         if fraction >= 0.9 { return hot }
         if fraction >= 0.75 { return warm }
@@ -147,7 +147,7 @@ struct Bar: View {
     }
 }
 
-// Блок лимитов одного сервиса: строка на каждое окно.
+// Limits of one service: a row per window.
 struct LimitsCard: View {
     var name: String
     var icon: String
@@ -173,13 +173,13 @@ struct LimitsCard: View {
                 ForEach(block.windows) { w in
                     VStack(alignment: .leading, spacing: 3) {
                         HStack(alignment: .firstTextBaseline) {
-                            Text(w.label).font(.system(size: 10.5, weight: .medium)).foregroundStyle(Theme.dim)
+                            Text(w.title).font(.system(size: 10.5, weight: .medium)).foregroundStyle(Theme.dim)
                             Spacer(minLength: 4)
                             if let r = w.resetsAt {
-                                Text("сброс через \(Fmt.until(r, from: now))")
+                                Text(tr("resets in \(Fmt.until(r, from: now))", "сброс через \(Fmt.until(r, from: now))"))
                                     .font(.system(size: 9.5)).foregroundStyle(Theme.dim)
                             }
-                            Text("\(Int((w.leftFraction * 100).rounded()))% осталось")
+                            Text(tr("\(Int((w.leftFraction * 100).rounded()))% left", "\(Int((w.leftFraction * 100).rounded()))% осталось"))
                                 .font(.system(size: 11, weight: .semibold, design: .rounded))
                                 .monospacedDigit()
                                 .foregroundStyle(.white)
@@ -188,7 +188,7 @@ struct LimitsCard: View {
                     }
                 }
             } else {
-                Text(block.message ?? "нет данных")
+                Text(block.message ?? tr("no data", "нет данных"))
                     .font(.system(size: 10))
                     .foregroundStyle(Theme.dim)
                     .lineLimit(2)
@@ -213,7 +213,7 @@ struct SystemCard: View {
                     }
                 }
                 Sparkline(values: snap.cpu.history, color: Theme.cpu).frame(height: 26)
-                Text("\(snap.cpu.cores) ядер · sys \(Fmt.pct(snap.cpu.system))")
+                Text("\(Fmt.cores(snap.cpu.cores)) · sys \(Fmt.pct(snap.cpu.system))")
                     .font(.system(size: 9.5)).foregroundStyle(Theme.dim)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -227,7 +227,7 @@ struct SystemCard: View {
                             Text(Fmt.gb(snap.memory.used))
                                 .font(.system(size: 17, weight: .semibold, design: .rounded))
                                 .monospacedDigit().foregroundStyle(.white)
-                            Text("/ \(Fmt.gb(snap.memory.total)) ГБ")
+                            Text(tr("/ \(Fmt.gb(snap.memory.total)) GB", "/ \(Fmt.gb(snap.memory.total)) ГБ"))
                                 .font(.system(size: 10)).foregroundStyle(Theme.dim)
                         }
                     }
@@ -241,8 +241,9 @@ struct SystemCard: View {
     }
 
     private var memoryFooter: String {
-        let p: String = snap.memory.pressure >= 4 ? "давление: высокое" : (snap.memory.pressure >= 2 ? "давление: среднее" : "давление: норма")
-        return snap.memory.swapUsed > 0 ? "\(p) · swap \(Fmt.gb(snap.memory.swapUsed)) ГБ" : p
+        let level = snap.memory.pressure >= 4 ? tr("high", "высокое") : (snap.memory.pressure >= 2 ? tr("elevated", "среднее") : tr("normal", "норма"))
+        let p = tr("pressure: \(level)", "давление: \(level)")
+        return snap.memory.swapUsed > 0 ? "\(p) · swap \(Fmt.gb(snap.memory.swapUsed)) \(tr("GB", "ГБ"))" : p
     }
 
     private var pressureColor: Color {
@@ -250,7 +251,7 @@ struct SystemCard: View {
     }
 }
 
-// Сегментированная полоса: приложения / wired / сжатая.
+// Segmented bar: app / wired / compressed.
 struct MemoryBreakdown: View {
     var mem: MemoryStats
 
@@ -270,9 +271,9 @@ struct MemoryBreakdown: View {
             }
             .frame(height: 6)
             HStack(spacing: 6) {
-                legend(Theme.ram, "прил. \(Fmt.gb(mem.app))")
+                legend(Theme.ram, tr("app \(Fmt.gb(mem.app))", "прил. \(Fmt.gb(mem.app))"))
                 legend(Theme.ram.opacity(0.65), "wired \(Fmt.gb(mem.wired))")
-                legend(Theme.ram.opacity(0.4), "сжат. \(Fmt.gb(mem.compressed))")
+                legend(Theme.ram.opacity(0.4), tr("compr. \(Fmt.gb(mem.compressed))", "сжат. \(Fmt.gb(mem.compressed))"))
             }
         }
     }
@@ -289,7 +290,7 @@ struct MemoryBreakdown: View {
     }
 }
 
-// Общая «большая» раскладка: виджет Large и поповер в меню-баре.
+// The full layout: Large widget, menu bar popover and the large desktop card.
 struct FullPanel: View {
     var snap: Snapshot
     var stale: Bool
@@ -298,7 +299,7 @@ struct FullPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 11) {
             if stale {
-                Label("нет связи с AI Pulse", systemImage: "exclamationmark.triangle.fill")
+                Label(tr("no data from AI Pulse", "нет связи с AI Pulse"), systemImage: "exclamationmark.triangle.fill")
                     .font(.system(size: 9.5, weight: .medium)).foregroundStyle(Theme.warm)
             }
             SystemCard(snap: snap)
@@ -311,17 +312,17 @@ struct FullPanel: View {
 }
 
 extension MemoryStats {
-    // У macOS память почти всегда «занята», поэтому тревогу показываем по давлению.
+    // macOS keeps memory nearly full by design, so the warning follows memory pressure.
     var tint: Color { pressure >= 4 ? Theme.hot : (pressure >= 2 ? Theme.warm : Theme.ram) }
 }
 
 extension LimitWindow {
-    // Как в Codex: показываем, сколько лимита осталось.
+    // Like Codex: show how much of the limit is left.
     var leftFraction: Double { min(max(1 - usedPercent / 100, 0), 1) }
 }
 
 extension Theme {
-    // Тревога по израсходованному: жёлтый от 75%, красный от 90%.
+    // Warning by usage: yellow from 75% used, red from 90%.
     static func limitTint(_ base: Color, used: Double) -> Color {
         used >= 90 ? hot : (used >= 75 ? warm : base)
     }
@@ -335,13 +336,13 @@ extension LimitsBlock {
     }
 
     func caption(now: Date) -> String {
-        guard state == .ok, let p = primary else { return "нет данных" }
-        if let r = p.resetsAt { return "\(p.label) · \(Fmt.untilShort(r, from: now))" }
-        return p.label
+        guard state == .ok, let p = primary else { return tr("no data", "нет данных") }
+        if let r = p.resetsAt { return "\(p.title) · \(Fmt.untilShort(r, from: now))" }
+        return p.title
     }
 }
 
-// Виджет Small: четыре кольца сеткой 2×2.
+// Small widget: four rings in a 2×2 grid.
 struct SmallGrid: View {
     var snap: Snapshot
     var stale: Bool
@@ -354,15 +355,15 @@ struct SmallGrid: View {
                 RingGauge(title: "RAM", fraction: snap.memory.fraction, color: Theme.ram, size: 50, lineWidth: 6, tint: snap.memory.tint)
             }
             HStack(spacing: 12) {
-                RingGauge(title: "Claude", fraction: snap.claude.gaugeFraction, color: Theme.claude, size: 50, lineWidth: 6, tint: snap.claude.gaugeTint(Theme.claude), inner: "ост.")
-                RingGauge(title: "Codex", fraction: snap.codex.gaugeFraction, color: Theme.codex, size: 50, lineWidth: 6, tint: snap.codex.gaugeTint(Theme.codex), inner: "ост.")
+                RingGauge(title: "Claude", fraction: snap.claude.gaugeFraction, color: Theme.claude, size: 50, lineWidth: 6, tint: snap.claude.gaugeTint(Theme.claude), inner: tr("left", "ост."))
+                RingGauge(title: "Codex", fraction: snap.codex.gaugeFraction, color: Theme.codex, size: 50, lineWidth: 6, tint: snap.codex.gaugeTint(Theme.codex), inner: tr("left", "ост."))
             }
         }
         .opacity(stale ? 0.55 : 1)
     }
 }
 
-// Виджет Medium: четыре кольца в ряд с подписями.
+// Medium widget and the "Rings" desktop card: four rings in a row.
 struct MediumRow: View {
     var snap: Snapshot
     var stale: Bool
@@ -371,18 +372,18 @@ struct MediumRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: 0) {
             RingGauge(title: "CPU", fraction: snap.cpu.usage, color: Theme.cpu,
-                      caption: "\(snap.cpu.cores) ядер", size: 64)
+                      caption: Fmt.cores(snap.cpu.cores), size: 64)
                 .frame(maxWidth: .infinity)
             RingGauge(title: "RAM", fraction: snap.memory.fraction, color: Theme.ram,
-                      caption: "\(Fmt.gb(snap.memory.used))/\(Fmt.gb(snap.memory.total)) ГБ", size: 64, tint: snap.memory.tint)
+                      caption: "\(Fmt.gb(snap.memory.used))/\(Fmt.gb(snap.memory.total)) \(tr("GB", "ГБ"))", size: 64, tint: snap.memory.tint)
                 .frame(maxWidth: .infinity)
             RingGauge(title: "Claude", fraction: snap.claude.gaugeFraction, color: Theme.claude,
                       caption: snap.claude.caption(now: now), size: 64,
-                      tint: snap.claude.gaugeTint(Theme.claude), inner: "осталось")
+                      tint: snap.claude.gaugeTint(Theme.claude), inner: tr("left", "осталось"))
                 .frame(maxWidth: .infinity)
             RingGauge(title: "Codex", fraction: snap.codex.gaugeFraction, color: Theme.codex,
                       caption: snap.codex.caption(now: now), size: 64,
-                      tint: snap.codex.gaugeTint(Theme.codex), inner: "осталось")
+                      tint: snap.codex.gaugeTint(Theme.codex), inner: tr("left", "осталось"))
                 .frame(maxWidth: .infinity)
         }
         .frame(maxHeight: .infinity)

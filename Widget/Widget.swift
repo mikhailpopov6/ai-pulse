@@ -19,7 +19,7 @@ struct PulseProvider: TimelineProvider {
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<PulseEntry>) -> Void) {
         let entry = current()
-        // Агент сам дёргает перезагрузку при новых данных; это страховка.
+        // The app reloads timelines itself when new data arrives; this is a fallback.
         completion(Timeline(entries: [entry], policy: .after(Date().addingTimeInterval(60))))
     }
 
@@ -41,8 +41,8 @@ struct PulseWidgetView: View {
             if entry.noData {
                 VStack(spacing: 6) {
                     Image(systemName: "waveform.path.ecg").font(.system(size: 22, weight: .bold)).foregroundStyle(Theme.cpu)
-                    Text("Запусти AI Pulse").font(.system(size: 12, weight: .semibold)).foregroundStyle(.white)
-                    Text("виджет ждёт данные от приложения").font(.system(size: 10)).foregroundStyle(Theme.dim)
+                    Text(tr("Open AI Pulse", "Запусти AI Pulse")).font(.system(size: 12, weight: .semibold)).foregroundStyle(.white)
+                    Text(tr("waiting for data from the app", "виджет ждёт данные от приложения")).font(.system(size: 10)).foregroundStyle(Theme.dim)
                         .multilineTextAlignment(.center)
                 }
             } else {
@@ -64,7 +64,7 @@ struct PulseWidget: Widget {
             PulseWidgetView(entry: entry)
         }
         .configurationDisplayName("AI Pulse")
-        .description("CPU, память и лимиты Claude и Codex.")
+        .description(tr("CPU, memory and Claude/Codex limits.", "CPU, память и лимиты Claude и Codex."))
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
     }
 }

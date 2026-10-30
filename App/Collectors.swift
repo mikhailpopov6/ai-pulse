@@ -6,7 +6,7 @@ import Darwin
 final class CPUSampler {
     private var prev: host_cpu_load_info?
 
-    // Доля занятости CPU с момента прошлого вызова: (всего, user+nice, system).
+    // CPU busy share since the previous call: (total, user+nice, system).
     func sample() -> (usage: Double, user: Double, system: Double)? {
         var info = host_cpu_load_info()
         var count = mach_msg_type_number_t(MemoryLayout<host_cpu_load_info_data_t>.stride / MemoryLayout<integer_t>.stride)
@@ -32,7 +32,7 @@ final class CPUSampler {
 // MARK: - Memory
 
 enum MemoryReader {
-    // Считаем «Использовано» так же, как Мониторинг системы: приложения + wired + сжатая.
+    // "Used" is computed like Activity Monitor: app memory + wired + compressed.
     static func read() -> MemoryStats {
         var stats = vm_statistics64()
         var count = mach_msg_type_number_t(MemoryLayout<vm_statistics64_data_t>.stride / MemoryLayout<integer_t>.stride)
@@ -64,8 +64,8 @@ enum MemoryReader {
 
 // MARK: - Codex
 
-// Лимиты Codex берём у самого Codex: `codex app-server`, метод account/rateLimits/read.
-// Авторизацией занимается Codex, токены сюда не попадают.
+// Codex limits come from Codex itself: `codex app-server`, method account/rateLimits/read.
+// Codex handles authentication; tokens never reach this app.
 final class CodexFetcher {
     private let queue = DispatchQueue(label: "aipulse.codex")
     private var running = false
@@ -87,7 +87,7 @@ final class CodexFetcher {
     }
 
     private func runOnce() -> LimitsBlock {
-        guard let path = Self.codexPath() else { return .unavailable("codex не найден") }
+        guard let path = Self.codexPath() else { return .unavailable(tr("codex not found", "codex не найден")) }
 
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: path)
@@ -128,7 +128,7 @@ final class CodexFetcher {
             try FileManager.default.createDirectory(at: SharedPaths.supportDir, withIntermediateDirectories: true)
             try proc.run()
         } catch {
-            return LimitsBlock(state: .error, message: "не удалось запустить codex", plan: nil, windows: [], fetchedAt: Date())
+            return LimitsBlock(state: .error, message: tr("could not start codex", "не удалось запустить codex"), plan: nil, windows: [], fetchedAt: Date())
         }
 
         let requests = [
@@ -145,15 +145,15 @@ final class CodexFetcher {
 
         lock.lock(); let resp = response; lock.unlock()
         guard waited == .success, let resp else {
-            return LimitsBlock(state: .error, message: "codex не ответил", plan: nil, windows: [], fetchedAt: Date())
+            return LimitsBlock(state: .error, message: tr("codex did not respond", "codex не ответил"), plan: nil, windows: [], fetchedAt: Date())
         }
         if let err = resp["error"] as? [String: Any] {
-            let msg = (err["message"] as? String).map { String($0.prefix(80)) } ?? "ошибка codex"
+            let msg = (err["message"] as? String).map { String($0.prefix(80)) } ?? tr("codex error", "ошибка codex")
             return LimitsBlock(state: .error, message: msg, plan: nil, windows: [], fetchedAt: Date())
         }
         guard let result = resp["result"] as? [String: Any],
               let limits = result["rateLimits"] as? [String: Any] else {
-            return LimitsBlock(state: .error, message: "пустой ответ codex", plan: nil, windows: [], fetchedAt: Date())
+            return LimitsBlock(state: .error, message: tr("empty response from codex", "пустой ответ codex"), plan: nil, windows: [], fetchedAt: Date())
         }
         return Self.parse(limits)
     }
@@ -165,12 +165,12 @@ final class CodexFetcher {
                   let used = (w["usedPercent"] as? NSNumber)?.doubleValue else { continue }
             let mins = (w["windowDurationMins"] as? NSNumber)?.intValue ?? 0
             let resets = (w["resetsAt"] as? NSNumber).map { Date(timeIntervalSince1970: $0.doubleValue) }
-            windows.append((mins, LimitWindow(label: Fmt.windowLabel(minutes: mins), usedPercent: used, resetsAt: resets)))
+            windows.append((mins, LimitWindow(kind: WindowKind.fromMinutes(mins), usedPercent: used, resetsAt: resets)))
         }
         windows.sort { $0.0 < $1.0 }
         let plan = (limits["planType"] as? String).map { $0.prefix(1).uppercased() + $0.dropFirst() }
         if windows.isEmpty {
-            return LimitsBlock(state: .unavailable, message: "codex не вернул лимиты", plan: plan, windows: [], fetchedAt: Date())
+            return LimitsBlock(state: .unavailable, message: tr("codex returned no limits", "codex не вернул лимиты"), plan: plan, windows: [], fetchedAt: Date())
         }
         return LimitsBlock(state: .ok, message: nil, plan: plan, windows: windows.map { $0.1 }, fetchedAt: Date())
     }

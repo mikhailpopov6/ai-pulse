@@ -1,4 +1,4 @@
-// Рисует иконку AI Pulse: четыре кольца-метрики на тёмном фоне.
+// Draws the AI Pulse icon: four metric rings on a dark background.
 // swift tools/make_icon.swift out.png
 import AppKit
 import SwiftUI

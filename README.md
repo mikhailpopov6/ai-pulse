@@ -1,119 +1,136 @@
 # AI Pulse
 
-Загрузка Mac и лимиты AI-подписок в одном месте: **CPU**, **память**, **Claude** (claude.ai Pro/Max) и **Codex** (ChatGPT). Живёт в меню-баре и карточкой на рабочем столе.
+Your Mac's load and your AI subscription limits in one place: **CPU**, **memory**, **Claude** (claude.ai Pro/Max) and **Codex** (ChatGPT). Lives in the menu bar and as a card on your desktop.
 
 <p>
-  <img src="docs/panel.png" width="340" alt="Панель AI Pulse: CPU, RAM, лимиты Claude и Codex">
-  <img src="docs/rings.png" width="364" alt="Компактный вид: четыре кольца">
+  <img src="docs/panel.png" width="340" alt="AI Pulse panel: CPU, RAM, Claude and Codex limits">
+  <img src="docs/rings.png" width="364" alt="Compact view: four rings">
 </p>
 
-## Что показывает
+**[⬇ Download AI Pulse for Mac (DMG)](https://github.com/mikhailpopov6/ai-pulse/releases/latest/download/AI-Pulse.dmg)** · macOS 14+ · Apple Silicon
 
-| Метрика | Что видно | Откуда берётся |
+## What it shows
+
+| Metric | What you see | Source |
 |---|---|---|
-| **CPU** | загрузка, график за последние минуты, доля system | macOS (Mach API) |
-| **RAM** | занято / всего, приложения · wired · сжатая, давление памяти, swap | macOS (Mach API, sysctl) |
-| **Claude** | сколько **осталось** от лимита на 5 часов и на неделю, время до сброса, план | claude.ai — тот же источник, что у `/usage` в Claude Code |
-| **Codex** | сколько **осталось** от лимита (у Pro — недельный), время до сброса, план | сам Codex: `codex app-server` |
+| **CPU** | load, a graph of the last minutes, system share | macOS (Mach API) |
+| **RAM** | used / total, app · wired · compressed, memory pressure, swap | macOS (Mach API, sysctl) |
+| **Claude** | how much of the 5-hour and weekly limit is **left**, time to reset, plan | claude.ai — the same source as `/usage` in Claude Code |
+| **Codex** | how much of the limit is **left** (weekly on Pro), time to reset, plan | Codex itself: `codex app-server` |
 
-Лимиты показываются остатком, как в Codex («44% left» = «44% осталось»). Цвет предупреждает: жёлтый, когда израсходовано 75%, красный — 90%. Кольцо RAM желтеет и краснеет по давлению памяти, а не по проценту: занятая память в macOS — норма.
+Limits are shown as what's left, like Codex does ("44% left"). Colors warn you: yellow at 75% used, red at 90%. The RAM ring follows memory pressure rather than the percentage, because macOS keeps memory nearly full by design.
 
-## Где показывает
+## Where it shows
 
-- **Меню-бар.** Иконка с CPU и RAM, по клику — панель с полными данными.
-- **Карточка на рабочем столе.** Лежит под окнами, видна на всех рабочих столах, обновляется каждые 2 секунды.
-  - Три вида: **Большой** (как панель из меню-бара), **Маленький** (то же, 80%), **Кольца** (четыре кольца в ряд).
-  - Переключение — в меню AI Pulse (строка «На столе») или правым кликом по карточке.
-  - Перетаскивается мышью. Место запоминается **отдельно для каждого набора экранов**: с внешним монитором — одно, только на ноутбуке — другое. Подключил монитор — карточка переехала на «мониторное» место, отключил — на «ноутбучное».
-- **Системный виджет macOS** (галерея «Изменить виджеты»). Код готов, но macOS показывает сторонние виджеты только с подписью Apple Development — см. [Системный виджет](#системный-виджет).
+- **Menu bar.** An icon with CPU and RAM; click it for the full panel.
+- **Desktop card.** Sits below your windows, shows on every Space, updates every 2 seconds.
+  - Three styles: **Large** (same as the menu bar panel), **Small** (the same at 80%), **Rings** (four rings in a row).
+  - Switch styles in the AI Pulse menu ("Desktop" row) or by right-clicking the card.
+  - Drag it anywhere. The position is remembered **per set of displays**: one spot with an external monitor, another on the laptop alone. Plug the monitor in and the card moves to its "monitor" spot, unplug it and it moves back.
+- **macOS widget** (the "Edit Widgets" gallery). The code is there, but macOS only shows third-party widgets signed with an Apple Development certificate — see [System widget](#system-widget).
 
-## Установка
+## Install
 
-Нужно:
-- macOS 14 или новее, Mac на Apple Silicon;
-- Xcode Command Line Tools (`xcode-select --install`) — полный Xcode не нужен;
-- для лимитов Codex — [Codex CLI](https://github.com/openai/codex), вход через ChatGPT (`codex login`);
-- для лимитов Claude — [Claude Code](https://code.claude.com/docs/en/overview) и подписка claude.ai Pro или Max.
+1. [Download `AI-Pulse.dmg`](https://github.com/mikhailpopov6/ai-pulse/releases/latest/download/AI-Pulse.dmg), open it and drag **AI Pulse** to **Applications**.
+2. Open AI Pulse from Applications. It lives in the menu bar, with no Dock icon.
+3. **First launch only:** AI Pulse is open source and not notarized by Apple, so macOS will say it "could not verify" the app. Open **System Settings → Privacy & Security**, scroll down and click **Open Anyway**. Or run:
+
+   ```bash
+   xattr -dr com.apple.quarantine "/Applications/AI Pulse.app"
+   ```
+
+AI Pulse adds itself to **Login Items** on first launch, so it starts with your Mac. Turn this off with **Open at login** in its menu or in System Settings → General → Login Items.
+
+**Requirements:** macOS 14 or later, Apple Silicon. For Codex limits — the [Codex CLI](https://github.com/openai/codex) signed in with ChatGPT (`codex login`). For Claude limits — [Claude Code](https://code.claude.com/docs/en/overview) and a claude.ai Pro or Max subscription.
+
+### Build from source
+
+Needs Xcode Command Line Tools (`xcode-select --install`); full Xcode is not required.
 
 ```bash
 git clone https://github.com/mikhailpopov6/ai-pulse.git
 cd ai-pulse
-./install.sh
+./install.sh       # build, install to ~/Applications and launch
+./make_dmg.sh      # or build dist/AI-Pulse.dmg
 ```
 
-`install.sh` рисует иконку, собирает приложение через `swiftc`, ставит его в `~/Applications/AI Pulse.app` и включает автозапуск при входе в систему. Обновление — `git pull && ./install.sh`, удаление — `./uninstall.sh`.
+## Connecting your limits
 
-## Подключение лимитов
+**Codex** is picked up automatically if `codex` is installed and signed in with ChatGPT. AI Pulse asks Codex itself for the limits (`codex app-server`) and never reads Codex's auth files.
 
-**Codex** подхватывается сам, если `codex` установлен и вы вошли через ChatGPT. AI Pulse спрашивает лимиты у самого Codex (`codex app-server`), файлы авторизации Codex не читает.
+**Claude:** click **Sign in to Claude** in the AI Pulse menu. Terminal opens with the claude.ai sign-in; finish it in your browser. The sign-in goes into a **separate config folder** (`~/Library/Application Support/AIPulse/claude-login`), so your main Claude Code setup is untouched — if it runs on an API key or a corporate proxy, it stays that way.
 
-**Claude:** в меню AI Pulse нажмите **«Войти в Claude»**. Откроется Терминал с входом в claude.ai — войдите в браузере своим аккаунтом. Вход делается в **отдельной папке конфига** (`~/Library/Application Support/AIPulse/claude-login`), поэтому ваш основной Claude Code не меняется: если он работает через API-ключ или корпоративный прокси, так и останется.
-
-То же вручную:
+The same thing by hand:
 
 ```bash
 env -u ANTHROPIC_BASE_URL -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_API_KEY CLAUDE_CONFIG_DIR="$HOME/Library/Application Support/AIPulse/claude-login" claude auth login --claudeai
 ```
 
-## Приватность и безопасность
+## Privacy and security
 
-- **В репозитории нет ключей, токенов и личных данных.**
-- Токен входа в claude.ai хранится только в связке ключей macOS (Keychain), в той же записи, куда его кладёт Claude Code: `Claude Code-credentials-<хеш папки конфига>`. AI Pulse читает и обновляет его через системный `/usr/bin/security`, держит только в памяти и никогда не пишет в файлы, логи или аргументы команд.
-- Токены Codex AI Pulse не видит вообще: авторизацией занимается сам Codex.
-- Куда ходит сеть: `api.anthropic.com` (лимиты Claude) и `platform.claude.com` (обновление токена Claude). Codex ходит в сеть сам. Больше никуда.
-- Сам AI Pulse пишет на диск только проценты и время сброса (`snapshot.json`), журнал перемещений карточки (`desktop.log`) и скрипт входа `claude-login.command` — в нём команда входа, без секретов.
+- **The repository contains no keys, tokens or personal data.**
+- Your claude.ai sign-in token lives only in the macOS Keychain, in the item Claude Code itself creates: `Claude Code-credentials-<hash of the config folder>`. AI Pulse reads and refreshes it through the system `/usr/bin/security` tool, keeps it in memory only, and never writes it to files, logs or command-line arguments.
+- AI Pulse never sees Codex tokens: Codex handles its own authentication.
+- Network access: `api.anthropic.com` (Claude limits) and `platform.claude.com` (Claude token refresh). Codex does its own networking. Nothing else.
+- AI Pulse itself writes only percentages and reset times (`snapshot.json`), a small event log (`aipulse.log`) and the sign-in script `claude-login.command`, which holds the sign-in command and no secrets.
 
-## Что и где лежит
+## Files
 
-| Что | Где |
+| What | Where |
 |---|---|
-| Приложение | `~/Applications/AI Pulse.app` |
-| Автозапуск | `~/Library/LaunchAgents/local.aipulse.plist` |
-| Снимок метрик для виджета | `~/Library/Application Support/AIPulse/snapshot.json` |
-| Журнал перемещений карточки | `~/Library/Application Support/AIPulse/desktop.log` |
-| Конфиг входа в claude.ai | `~/Library/Application Support/AIPulse/claude-login/` |
-| Токен claude.ai | Keychain, `Claude Code-credentials-<хеш>` |
-| Настройки (вид, места карточки) | `defaults read local.aipulse` |
+| App | `/Applications/AI Pulse.app` (DMG) or `~/Applications/AI Pulse.app` (`install.sh`) |
+| Start at login | System Settings → General → Login Items |
+| Metrics snapshot for the widget | `~/Library/Application Support/AIPulse/snapshot.json` |
+| Event log (card moves, login item) | `~/Library/Application Support/AIPulse/aipulse.log` |
+| claude.ai sign-in config | `~/Library/Application Support/AIPulse/claude-login/` |
+| claude.ai token | Keychain, `Claude Code-credentials-<hash>` |
+| Settings (card style and positions) | `defaults read local.aipulse` |
 
-`./uninstall.sh` удаляет всё из этой таблицы.
+`./uninstall.sh` removes everything in this table.
 
-## Частота обновления
+## Update frequency
 
-| Данные | Как часто |
+| Data | How often |
 |---|---|
-| CPU, RAM | каждые 2 секунды |
-| Codex | раз в минуту |
-| Claude | раз в полторы минуты; если claude.ai ответит «слишком часто» (429) — пауза 5 минут |
-| Кнопка «Обновить» | сразу |
+| CPU, RAM | every 2 seconds |
+| Codex | every minute |
+| Claude | every ~1.5 minutes; if claude.ai answers "too many requests" (429), AI Pulse pauses for 5 minutes |
+| "Refresh" button | immediately |
 
-## Системный виджет
+## Language
 
-Карточка на рабочем столе работает без всяких сертификатов. Чтобы AI Pulse появился ещё и в системной галерее виджетов («Изменить виджеты»), нужна подпись Apple Development: macOS (`chronod`) отбрасывает виджеты с ad-hoc подписью.
+The app follows your system language: English by default, Russian if Russian is your first preferred language.
 
-1. Поставьте Xcode, войдите в Apple ID: Xcode → Settings → Accounts. Бесплатного аккаунта хватает.
-2. Там же: Manage Certificates → «+» → **Apple Development**.
-3. Запустите `./install.sh`: `build.sh` сам найдёт сертификат и подпишет им приложение и виджет. Конкретный сертификат можно указать через `AIPULSE_SIGN_ID=<SHA-1 или имя>`.
+## System widget
 
-## Если что-то не так
+The desktop card works without any certificates. To also get AI Pulse in the system widget gallery ("Edit Widgets"), the app has to be signed with an Apple Development certificate: macOS (`chronod`) drops ad-hoc signed widgets.
 
-| Симптом | Что делать |
+1. Install Xcode and sign in with your Apple ID: Xcode → Settings → Accounts. A free account is enough.
+2. In the same place: Manage Certificates → "+" → **Apple Development**.
+3. Run `./install.sh`. `build.sh` finds the certificate and signs the app and the widget with it. To pick a specific one, set `AIPULSE_SIGN_ID=<SHA-1 or name>`.
+
+## Troubleshooting
+
+| Symptom | What to do |
 |---|---|
-| Claude: «войди в claude.ai» или «вход истёк» | меню → «Войти в Claude» |
-| Claude: «claude.ai просит подождать (429)» | ничего: AI Pulse сам подождёт 5 минут |
-| Codex: «codex не найден» | поставьте Codex CLI в `~/.local/bin`, `/opt/homebrew/bin` или `/usr/local/bin` |
-| Карточка встала не туда | перетащите её на нужное место — запомнится для текущего набора экранов. Что происходило — в `desktop.log` |
-| Нет в галерее виджетов | нужна подпись Apple Development, см. выше |
+| "Apple could not verify AI Pulse" | System Settings → Privacy & Security → Open Anyway (see [Install](#install)) |
+| Claude: "sign in to claude.ai" or "sign-in expired" | menu → Sign in to Claude |
+| Claude: "claude.ai asks to slow down (429)" | nothing to do: AI Pulse waits 5 minutes on its own |
+| Codex: "codex not found" | install the Codex CLI into `~/.local/bin`, `/opt/homebrew/bin` or `/usr/local/bin` |
+| The card is in the wrong spot | drag it where you want it; the spot is saved for the current set of displays. See `aipulse.log` for what happened |
+| Not in the widget gallery | needs an Apple Development signature, see above |
 
-## Устройство
+## Project layout
 
 ```
-App/        приложение в меню-баре: сборщики метрик, Claude/Codex, карточка на столе
-Widget/     системный виджет WidgetKit (песочница, только читает snapshot.json)
-Shared/     модель данных и SwiftUI-вёрстка, общие для приложения и виджета
-Resources/  Info.plist и entitlements
-tools/      генерация иконки и PNG-превью вёрстки
-build.sh    сборка через swiftc без Xcode
-install.sh  сборка + установка + автозапуск
+App/         menu bar app: metric collectors, Claude/Codex, desktop card, login item
+Widget/      WidgetKit extension (sandboxed, only reads snapshot.json)
+Shared/      data model, localization and SwiftUI views shared by the app and the widget
+Resources/   Info.plists, entitlements, DMG read-me
+tools/       icon generator and PNG previews of the layouts
+build.sh     build with swiftc, no Xcode needed
+install.sh   build + install to ~/Applications + launch
+make_dmg.sh  build dist/AI-Pulse.dmg
 ```
 
-Подробности для разработчиков и AI-агентов — в [AGENTS.md](AGENTS.md).
+Details for developers and AI agents are in [AGENTS.md](AGENTS.md).
